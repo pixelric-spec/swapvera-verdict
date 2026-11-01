@@ -1,13 +1,13 @@
-name: 'ModelCheck: model migration verdict'
+name: 'Swapvera: model migration verdict'
 description: 'Runs your prompts on the current and the replacement LLM and comments a statistical verdict on the pull request.'
-author: 'ModelCheck'
+author: 'Swapvera'
 branding:
   icon: 'check-circle'
   color: 'blue'
 inputs:
   config:
-    description: 'Path to modelcheck.yaml.'
-    default: 'modelcheck.yaml'
+    description: 'Path to swapvera.yaml.'
+    default: 'swapvera.yaml'
   from:
     description: 'Override the current model (provider:model).'
     default: ''
@@ -15,7 +15,7 @@ inputs:
     description: 'Override the replacement model (provider:model or auto).'
     default: ''
   license:
-    description: 'ModelCheck license key for the hosted judge. Leave empty to judge with your own key (judge.mode: byok).'
+    description: 'Swapvera license key for the hosted judge. Leave empty to judge with your own key (judge.mode: byok).'
     default: ''
   fail-on:
     description: 'do_not_migrate (default), review or never.'
@@ -31,7 +31,7 @@ inputs:
     default: 'false'
   engine-spec:
     description: 'pip install spec for the engine.'
-    default: 'modelcheck'
+    default: 'swapvera'
 outputs:
   verdict:
     description: 'safe, review, do_not_migrate or inconclusive.'
@@ -45,7 +45,7 @@ runs:
     - uses: actions/setup-python@v5
       with:
         python-version: '3.12'
-    - name: Install ModelCheck
+    - name: Install Swapvera
       shell: bash
       env:
         SPEC: ${{ inputs.engine-spec }}
@@ -54,28 +54,28 @@ runs:
       id: run
       shell: bash
       env:
-        MODELCHECK_LICENSE: ${{ inputs.license }}
+        SWAPVERA_LICENSE: ${{ inputs.license }}
         CONFIG: ${{ inputs.config }}
         FROM: ${{ inputs.from }}
         TO: ${{ inputs.to }}
         SHARE: ${{ inputs.share }}
       run: |
         set +e
-        args=(run -c "$CONFIG" --out modelcheck-report.md --json modelcheck-report.json --fail-on never)
+        args=(run -c "$CONFIG" --out swapvera-report.md --json swapvera-report.json --fail-on never)
         [ -n "$FROM" ] && args+=(--from "$FROM")
         [ -n "$TO" ] && args+=(--to "$TO")
         [ "$SHARE" = "true" ] && args+=(--share)
-        modelcheck "${args[@]}"
+        swapvera "${args[@]}"
         code=$?
         set -e
-        if [ ! -f modelcheck-report.json ]; then
-          echo "::error::ModelCheck could not run (exit $code). See the log above."
+        if [ ! -f swapvera-report.json ]; then
+          echo "::error::Swapvera could not run (exit $code). See the log above."
           exit 2
         fi
-        verdict=$(python -c "import json;print(json.load(open('modelcheck-report.json'))['verdict'])")
+        verdict=$(python -c "import json;print(json.load(open('swapvera-report.json'))['verdict'])")
         echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
-        echo "report=modelcheck-report.md" >> "$GITHUB_OUTPUT"
-        cat modelcheck-report.md >> "$GITHUB_STEP_SUMMARY"
+        echo "report=swapvera-report.md" >> "$GITHUB_OUTPUT"
+        cat swapvera-report.md >> "$GITHUB_STEP_SUMMARY"
     - name: Comment on pull request
       if: ${{ inputs.comment == 'true' && github.event_name == 'pull_request' }}
       shell: bash
@@ -84,11 +84,11 @@ runs:
         PR: ${{ github.event.pull_request.number }}
         REPO: ${{ github.repository }}
       run: |
-        id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate --jq '.[] | select(.body | contains("<!-- modelcheck-verdict -->")) | .id' | head -n1)
+        id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate --jq '.[] | select(.body | contains("<!-- swapvera-verdict -->")) | .id' | head -n1)
         if [ -n "$id" ]; then
-          gh api -X PATCH "repos/$REPO/issues/comments/$id" -F body=@modelcheck-report.md > /dev/null
+          gh api -X PATCH "repos/$REPO/issues/comments/$id" -F body=@swapvera-report.md > /dev/null
         else
-          gh api -X POST "repos/$REPO/issues/$PR/comments" -F body=@modelcheck-report.md > /dev/null
+          gh api -X POST "repos/$REPO/issues/$PR/comments" -F body=@swapvera-report.md > /dev/null
         fi || echo "::warning::Could not comment (needs pull-requests: write)."
     - name: Apply fail-on
       shell: bash
@@ -98,7 +98,7 @@ runs:
       run: |
         case "$FAIL_ON:$VERDICT" in
           never:*) exit 0 ;;
-          *:do_not_migrate|*:inconclusive) echo "::error::ModelCheck verdict: $VERDICT"; exit 1 ;;
-          review:review) echo "::error::ModelCheck verdict: review"; exit 1 ;;
+          *:do_not_migrate|*:inconclusive) echo "::error::Swapvera verdict: $VERDICT"; exit 1 ;;
+          review:review) echo "::error::Swapvera verdict: review"; exit 1 ;;
           *) exit 0 ;;
         esac
