@@ -26,4 +26,4 @@ jobs:
 
 Outputs: `verdict` and `report`. With `fail-on: review` the job also fails when some cases need review.
 
-`share: true` adds your anonymous outcome categories to the [migration atlas](https://swapvera.example/atlas/) (output formats, check types, which ones got worse; never prompts or outputs). It needs a license, and a failed upload never fails the job.
+`share: true` adds your anonymous outcome categories to the [migration atlas](https://swapvera.vercel.app/atlas/) (output formats, check types, which ones got worse; never prompts or outputs). It needs a license, and a failed upload never fails the job.
