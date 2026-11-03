@@ -1,22 +1,30 @@
 name: 'Swapvera: model migration verdict'
-description: 'Runs your prompts on the current and the replacement LLM and comments a statistical verdict on the pull request.'
+description: 'Tests a model switch on your real production requests and comments a statistical verdict on the pull request.'
 author: 'Swapvera'
 branding:
   icon: 'check-circle'
   color: 'blue'
+# Cliente fino de la API alojada: la comparacion corre en Swapvera con las trazas de produccion del proyecto.
+# No instala nada; solo usa curl y el python3 que ya trae el runner.
 inputs:
-  config:
-    description: 'Path to swapvera.yaml.'
-    default: 'swapvera.yaml'
-  from:
-    description: 'Override the current model (provider:model).'
+  license:
+    description: 'Swapvera project key (sv_...). Store it as a secret.'
+    required: true
+  feature:
+    description: 'The feature to test, as it appears in the dashboard (its SDK feature name or label). Optional when the project has one feature.'
     default: ''
   to:
-    description: 'Override the replacement model (provider:model or auto).'
-    default: ''
-  license:
-    description: 'Swapvera license key for the hosted judge. Leave empty to judge with your own key (judge.mode: byok).'
-    default: ''
+    description: 'Replacement model (provider:model), or auto for the first suggestion: the official replacement when the current model is shutting down.'
+    default: 'auto'
+  cases:
+    description: 'Distinct production requests to compare (10 to 300).'
+    default: '150'
+  reuse-days:
+    description: 'Reuse a finished comparison of the same feature and model from the last N days instead of spending a new one. 0 always runs a new one.'
+    default: '7'
+  timeout-minutes:
+    description: 'How long to wait for the comparison.'
+    default: '60'
   fail-on:
     description: 'do_not_migrate (default), review or never.'
     default: 'do_not_migrate'
@@ -26,12 +34,9 @@ inputs:
   github-token:
     description: 'Token used to comment.'
     default: ${{ github.token }}
-  share:
-    description: 'Share anonymous outcome categories with the migration atlas (never prompts or outputs). Needs a license.'
-    default: 'false'
-  engine-spec:
-    description: 'pip install spec for the engine.'
-    default: 'swapvera'
+  api-url:
+    description: 'Swapvera API.'
+    default: 'https://swapvera.com'
 outputs:
   verdict:
     description: 'safe, review, do_not_migrate or inconclusive.'
@@ -39,43 +44,24 @@ outputs:
   report:
     description: 'Path to the Markdown report.'
     value: ${{ steps.run.outputs.report }}
+  experiment:
+    description: 'Id of the comparison in the dashboard.'
+    value: ${{ steps.run.outputs.experiment }}
 runs:
   using: 'composite'
   steps:
-    - uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
-    - name: Install Swapvera
-      shell: bash
-      env:
-        SPEC: ${{ inputs.engine-spec }}
-      run: python -m pip install --quiet "$SPEC"
     - name: Run verdict
       id: run
       shell: bash
       env:
-        SWAPVERA_LICENSE: ${{ inputs.license }}
-        CONFIG: ${{ inputs.config }}
-        FROM: ${{ inputs.from }}
+        SV_KEY: ${{ inputs.license }}
+        SV_API: ${{ inputs.api-url }}
+        FEATURE: ${{ inputs.feature }}
         TO: ${{ inputs.to }}
-        SHARE: ${{ inputs.share }}
-      run: |
-        set +e
-        args=(run -c "$CONFIG" --out swapvera-report.md --json swapvera-report.json --fail-on never)
-        [ -n "$FROM" ] && args+=(--from "$FROM")
-        [ -n "$TO" ] && args+=(--to "$TO")
-        [ "$SHARE" = "true" ] && args+=(--share)
-        swapvera "${args[@]}"
-        code=$?
-        set -e
-        if [ ! -f swapvera-report.json ]; then
-          echo "::error::Swapvera could not run (exit $code). See the log above."
-          exit 2
-        fi
-        verdict=$(python -c "import json;print(json.load(open('swapvera-report.json'))['verdict'])")
-        echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
-        echo "report=swapvera-report.md" >> "$GITHUB_OUTPUT"
-        cat swapvera-report.md >> "$GITHUB_STEP_SUMMARY"
+        CASES: ${{ inputs.cases }}
+        REUSE_DAYS: ${{ inputs.reuse-days }}
+        TIMEOUT_MIN: ${{ inputs.timeout-minutes }}
+      run: python3 "$GITHUB_ACTION_PATH/verdict.py"
     - name: Comment on pull request
       if: ${{ inputs.comment == 'true' && github.event_name == 'pull_request' }}
       shell: bash
